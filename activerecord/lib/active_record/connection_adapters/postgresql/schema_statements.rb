@@ -46,6 +46,11 @@ module ActiveRecord
           execute "CREATE DATABASE #{quote_table_name(name)}#{option_string}"
         end
 
+        # Returns an array of table names defined in the database, qualified with schema name
+        def qualified_tables
+          query_values(data_source_sql(type: "BASE TABLE", qualified: true), "SCHEMA")
+        end
+
         # Drops a PostgreSQL database.
         #
         # Example:
@@ -741,11 +746,14 @@ module ActiveRecord
             super
           end
 
-          def data_source_sql(name = nil, type: nil)
+          def data_source_sql(name = nil, type: nil, qualified: false)
             scope = quoted_scope(name, type: type)
             scope[:type] ||= "'r','v','m','p','f'" # (r)elation/table, (v)iew, (m)aterialized view, (p)artitioned table, (f)oreign table
-
-            sql = +"SELECT c.relname FROM pg_class c LEFT JOIN pg_namespace n ON n.oid = c.relnamespace"
+            if qualified
+              sql = +"SELECT format('%I.%I', n.nspname, c.relname) FROM pg_class c LEFT JOIN pg_namespace n ON n.oid = c.relnamespace"
+            else
+              sql = +"SELECT c.relname FROM pg_class c LEFT JOIN pg_namespace n ON n.oid = c.relnamespace"
+            end
             sql << " WHERE n.nspname = #{scope[:schema]}"
             sql << " AND c.relname = #{scope[:name]}" if scope[:name]
             sql << " AND c.relkind IN (#{scope[:type]})"
